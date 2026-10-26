@@ -8,10 +8,17 @@
 
 ## 安装
 
-1. 打开 `chrome://extensions`
-2. 右上角打开「开发者模式」
-3. 「加载已解压的扩展程序」→ 选择本目录
-4. 刷新已经打开的 chat.deepseek.com 页面
+还没上架 Chrome 应用商店，目前从源码加载。Chrome 的「加载已解压的扩展程序」要的是一个本地文件夹，所以先把代码拿到本地：
+
+1. 任选一种：
+   - 克隆：`git clone https://github.com/GioStarLC/ds-popup.git`
+   - 或在仓库页点 **Code → Download ZIP**，下载后解压
+2. 打开 `chrome://extensions`
+3. 右上角打开「开发者模式」
+4. 「加载已解压的扩展程序」→ 选择包含 `manifest.json` 的那一层目录（克隆出来是 `ds-popup/`，ZIP 解压出来通常是 `ds-popup-main/`，不要再往里点一层）
+5. 刷新已经打开的 chat.deepseek.com 页面
+
+更新时重新拉取或重新下载，然后在 `chrome://extensions` 的扩展卡片上点刷新——只刷新网页不会拿到新的 content script。
 
 ## 用法
 
