@@ -1,0 +1,14 @@
+{
+  "name": "ds-popup",
+  "version": "0.1.0",
+  "private": true,
+  "description": "在 chat.deepseek.com 选中助手回复、就地批注，汇总成引用草稿的 Chrome 扩展。",
+  "type": "module",
+  "scripts": {
+    "check": "node tools/check.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

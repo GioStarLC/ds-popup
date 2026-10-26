@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "ds-popup — DeepSeek 批注",
+  "description": "在 chat.deepseek.com 选中助手回复里的文字，就地写下回答，最后汇总成引用草稿。",
+  "version": "0.1.0",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chat.deepseek.com/*"],
+      "js": ["src/core.js", "src/adapter.js", "src/card.js", "src/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "host_permissions": ["https://chat.deepseek.com/*"]
+}
