@@ -51,6 +51,8 @@ textarea[placeholder*="DeepSeek"]                输入框（带可见性兜底�
 
 **高亮直接用 CSS Custom Highlight API。** content script 的 isolated world 与页面共享 Document，`CSS.highlights` 的注册表挂在 Document 上，实测可用（`::highlight()` 规则注入页面即可）。不支持的浏览器上标记仍可用，只是不上色。
 
+**复制由卡片接管，而不是让浏览器做。** 卡片打开时把焦点放进批注框，而 Chromium 在聚焦文本控件时会折叠页面选区——实测 `focus()` 之后 `window.getSelection()` 的引文变成空、`collapsed: true`。于是浏览器原生的 `Cmd/Ctrl+C` 复制的是空输入框，而不是刚选中的段落。卡片本来就持有选区原文，所以 `Cmd/Ctrl+C` 和「复制」按钮都直接写剪贴板；如果读者在草稿里选了自己的字，就把这次按键交还给浏览器。没有选择「打开卡片时不聚焦」：选中后直接写是这个扩展的主流程，用失去它来换原生复制不划算。
+
 **没有构建步骤。** 卡片是原生 DOM，不是 React；四个 content script 按顺序加载，共享 `globalThis` 上的三个命名空间。代价是没有类型检查，收益是改一行刷新页面就能看到——对一个要跟随宿主改版的小扩展，这个交换是值的。
 
 ## 已知边界

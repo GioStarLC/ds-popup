@@ -179,7 +179,7 @@
     if (C.pack(text) === '') return null
 
     var anchor = C.anchorOf(reply, key, range, text)
-    if (anchor !== null) return { anchor: anchor, range: range, reply: reply }
+    if (anchor !== null) return { anchor: anchor, range: range, reply: reply, text: text }
 
     var clamped = document.createRange()
     try {
@@ -192,7 +192,7 @@
     if (C.pack(clampedText) !== C.pack(text)) return null
     anchor = C.anchorOf(reply, key, clamped, clampedText)
     if (anchor === null) return null
-    return { anchor: anchor, range: clamped, reply: reply }
+    return { anchor: anchor, range: clamped, reply: reply, text: clampedText }
   }
 
   function samePassage(scene, found) {
@@ -253,6 +253,10 @@
       mode: 'write',
       rect: rect,
       quote: found.anchor.text,
+      // What the browser would have put on the clipboard had focusing the note
+      // not collapsed the selection. The display quote above is clamped; this is
+      // the whole passage.
+      copyText: found.text,
       note: '',
       dark: A.isDark(),
       anchor: found.anchor,

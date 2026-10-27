@@ -5,9 +5,16 @@
  * host components, and the card is one form, not a tree. Keeping it dependency
  * free is also what keeps the Chrome build free of a bundler.
  *
- * The card never disappears on its own. It closes on Esc, ×, a click outside, or
- * a copy — the same exits as the DSH plugin — and while the reader is typing in
- * it, scrolling the transcript does not take it away.
+ * The card never disappears on its own. It closes on Esc, ×, or a click outside;
+ * copying the passage does not close it, because copying is often the first half
+ * of answering. While the reader is typing in it, scrolling the transcript does
+ * not take it away.
+ *
+ * Copy has to be handled here rather than by the browser. Focusing the note
+ * collapses the page selection (Chromium does this for any focused text field),
+ * so the browser's own Cmd/Ctrl+C would copy an empty textarea. The card keeps
+ * the passage anyway, so Cmd/Ctrl+C is replayed against that copy — unless the
+ * reader has selected text inside their own draft, which the browser still owns.
  */
 (function (global) {
   'use strict'
@@ -105,6 +112,13 @@
     .quick--agree:hover { filter: brightness(.94); }
     .mark { height: 32px; padding: 0 10px; font-size: 13px; color: var(--muted); }
     .mark:hover { background: var(--hover); }
+    /* Copy reports back in place. The floor keeps the row from shifting when
+       "复制" becomes "已复制" for a moment. */
+    .copy { min-width: 62px; color: var(--brand); }
+    .copy[data-copied="true"] {
+      border-color: var(--brand-line);
+      background: var(--brand-soft);
+    }
     .hint {
       margin-top: 7px;
       font-size: 11px;
@@ -213,6 +227,8 @@
   var handlers = {}
   var liftTimer = 0
   var dimTimer = 0
+  var copyTimer = 0
+  var copyLabel = '复制'
   var scene = null
 
   function build() {
@@ -244,6 +260,7 @@
       '    <span class="emoji" aria-hidden="true">👎</span><span>不同意</span>',
       '  </button>',
       '  <button type="button" class="mark" data-act="mark" title="只挑中这一段：留在页面上高亮，不写进输入框">标记</button>',
+      '  <button type="button" class="mark copy" data-act="copy">复制</button>',
       '</div>',
       '<div class="hint"><span><kbd>Enter</kbd> 保存 · <kbd>Esc</kbd> 关闭</span><span class="left"></span></div>',
       '<div class="marked-line" hidden>这段文字已被标记</div>',
@@ -265,6 +282,7 @@
       noticeText: card.querySelector('.notice-text'),
       undo: card.querySelector('[data-act="undo"]'),
       close: card.querySelector('.close'),
+      copy: card.querySelector('.copy'),
     }
 
     card.addEventListener('pointerenter', lift)
@@ -278,6 +296,13 @@
     })
     card.addEventListener('click', onAct)
     card.addEventListener('keydown', onKeyDown)
+    // Copy must not take the caret out of the note: it is not an exit, and the
+    // sentence being written is halfway through.
+    if (refs.copy !== null) {
+      refs.copy.addEventListener('mousedown', function (event) {
+        event.preventDefault()
+      })
+    }
     refs.note.addEventListener('input', function () {
       autosize()
       if (handlers.onWritingChange) handlers.onWritingChange(true)
@@ -321,6 +346,10 @@
       if (handlers.onQuick) handlers.onQuick(act === 'agree' ? '同意' : '不同意')
       return
     }
+    if (act === 'copy') {
+      copyPassage()
+      return
+    }
     if (act === 'close' && handlers.onClose) handlers.onClose()
     if (act === 'mark' && handlers.onMark) handlers.onMark()
     if (act === 'unmark' && handlers.onUnmark) handlers.onUnmark()
@@ -335,15 +364,116 @@
       if (handlers.onClose) handlers.onClose()
       return
     }
+    if (scene !== null && scene.mode === 'write' && isCopyKey(event)) {
+      // A selection inside the draft is the reader's own text: leave it to the
+      // browser. Otherwise the page selection is already gone (focusing the note
+      // collapsed it), so copy the passage the card is about.
+      if (refs.note !== null && refs.note.selectionStart !== refs.note.selectionEnd) return
+      event.preventDefault()
+      copyPassage()
+      return
+    }
     if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.isComposing) {
+      // Only the draft commits on Enter. A focused button (copy, for one) keeps
+      // its own keyboard activation.
+      if (event.target !== refs.note) return
       event.preventDefault()
       if (handlers.onCommit) handlers.onCommit(refs.note.value)
       return
     }
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      if (event.target !== refs.note) return
       event.preventDefault()
       if (handlers.onCommit) handlers.onCommit(refs.note.value)
     }
+  }
+
+  function isCopyKey(event) {
+    if (!(event.metaKey || event.ctrlKey)) return false
+    if (event.altKey || event.shiftKey) return false
+    return String(event.key).toLowerCase() === 'c'
+  }
+
+  function copyShortcut() {
+    var platform =
+      (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
+    return /mac/i.test(platform) ? '⌘C' : 'Ctrl+C'
+  }
+
+  /**
+   * Copy through the temp-textarea command when the clipboard API cannot run.
+   *
+   * `execCommand('copy')` is synchronous and works inside a keydown or click, but
+   * it moves focus; the caret in the note is put back afterwards so copying does
+   * not cost the reader their place in the sentence.
+   */
+  function legacyCopy(text) {
+    var note = refs.note
+    var caret = note !== null && !note.hidden ? note.selectionStart : null
+    var area = document.createElement('textarea')
+    area.value = text
+    area.setAttribute('readonly', '')
+    area.setAttribute('aria-hidden', 'true')
+    area.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0;pointer-events:none;'
+    ;(document.body || document.documentElement).appendChild(area)
+    var copied = false
+    try {
+      area.select()
+      copied = document.execCommand('copy')
+    } catch (error) {
+      copied = false
+    }
+    area.remove()
+    if (note !== null && !note.hidden) {
+      try {
+        note.focus({ preventScroll: true })
+        if (caret !== null) note.setSelectionRange(caret, caret)
+      } catch (error) {
+        /* noop */
+      }
+    }
+    return copied
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        var pending = navigator.clipboard.writeText(text)
+        if (pending && typeof pending.then === 'function') {
+          return pending.then(
+            function () {
+              return true
+            },
+            function () {
+              return legacyCopy(text)
+            }
+          )
+        }
+      } catch (error) {
+        /* fall through */
+      }
+    }
+    return Promise.resolve(legacyCopy(text))
+  }
+
+  function copyPassage() {
+    if (scene === null) return
+    var text =
+      typeof scene.copyText === 'string' && scene.copyText !== '' ? scene.copyText : scene.quote
+    if (typeof text !== 'string' || text === '') return
+    copyText(text).then(flashCopied)
+  }
+
+  function flashCopied(copied) {
+    var button = refs.copy
+    if (button === null) return
+    window.clearTimeout(copyTimer)
+    button.textContent = copied ? '已复制' : '复制失败'
+    button.setAttribute('data-copied', copied ? 'true' : 'false')
+    copyTimer = window.setTimeout(function () {
+      button.textContent = copyLabel
+      button.removeAttribute('data-copied')
+    }, 1400)
   }
 
   function autosize() {
@@ -393,6 +523,14 @@
     refs.unmark.hidden = writing
     refs.notice.hidden = true
 
+    copyLabel = '复制'
+    if (refs.copy !== null) {
+      window.clearTimeout(copyTimer)
+      refs.copy.textContent = copyLabel
+      refs.copy.removeAttribute('data-copied')
+      refs.copy.title = '复制这段原文（' + copyShortcut() + '）'
+    }
+
     if (writing) {
       refs.note.value = typeof next.note === 'string' ? next.note : ''
       autosize()
@@ -429,6 +567,7 @@
     scene = null
     window.clearTimeout(liftTimer)
     window.clearTimeout(dimTimer)
+    window.clearTimeout(copyTimer)
     if (host !== null) host.remove()
   }
 
